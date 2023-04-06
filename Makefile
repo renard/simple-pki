@@ -3,7 +3,7 @@
 # Copyright © 2022- Sébastien Gross
 
 # Created: 2022-06-02
-# Last changed: 2023-01-03 16:39:35
+# Last changed: 2023-04-06 17:16:22
 
 # This program is free software. It comes without any warranty, to
 # the extent permitted by applicable law. You can redistribute it
@@ -14,11 +14,14 @@
 ## BEGIN HELP
 # Generate simple PKI for testing purposes
 #
-# make ca.pem                      Create a CA certificate
-# make test.example.com.pem.rsa    Generate certificate RSA certificate for
-#                                  test.example.com.pem
-# make test.example.com.pem.ecdsa  Generate certificate ECDSA certificate for
-#                                  test.example.com.pem
+# make ca.pem                         Create a CA certificate
+# make test.example.com.pem.rsa       Generate certificate RSA certificate
+#                                     for test.example.com.pem
+# make test.example.com.pem.ecdsa     Generate certificate ECDSA certificate
+#                                     for test.example.com.pem
+# make example.com.pem.ecdsa.revoke   Revoke certificate ECDSA certificate
+#                                     for test.example.com.pem and generate
+#                                     ca.pem.crl revocation list
 #
 # Additionnal variables:
 #
@@ -105,5 +108,24 @@ $(CA_FILE):
 
 	@$(OPENSSL) verify -CAfile $(CA_FILE) $@
 
+
+%.pem.rsa.revoke: %.pem.rsa
+	@$(MAKE) revoke CERT_FILE="$(shell basename $@ .revoke)" KEY_TYPE=rsa
+
+
+%.pem.ecdsa.revoke:
+	@$(MAKE) revoke CERT_FILE="$(shell basename $@ .revoke)" KEY_TYPE=ec
+
+revoke:
+	@touch index.txt
+	@$(OPENSSL) ca -cert $(CA_FILE) -keyfile $(CA_FILE).key \
+		-config <(echo -e  "[ca]\ndefault_ca=CA\n[CA]\ndatabase=index.txt\ndefault_md=default\n") \
+		-updatedb -revoke $(CERT_FILE)
+	@$(OPENSSL) ca -cert $(CA_FILE) -keyfile $(CA_FILE).key \
+		-config <(echo -e  "[ca]\ndefault_ca=CA\n[CA]\ndatabase=index.txt\ndefault_md=default\n") -gencrl -out $(CA_FILE).crl -crldays 2
+	@mv $(CERT_FILE) $(CERT_FILE).revoke
+	@$(OPENSSL) crl -in $(CA_FILE).crl -text -noout
+	@cat index.txt
+
 clean:
-	@rm -rf *.pem *.pem.ecdsa *.pem.rsa
+	@rm -rf *.pem *.crl *.key *.pem.ecdsa *.pem.rsa index.txt.* *.revoke
